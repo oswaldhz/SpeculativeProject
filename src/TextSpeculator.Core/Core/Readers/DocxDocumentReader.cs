@@ -1,13 +1,13 @@
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using System.Text;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace TextSpeculator.Core.Readers;
 
 public sealed class DocxDocumentReader : ITextDocumentReader
 {
-    public bool CanRead(string extension) => extension.Equals(".docx", StringComparison.OrdinalIgnoreCase);
+    public bool CanRead(string extension)
+        => extension.Equals(".docx", StringComparison.OrdinalIgnoreCase);
 
     public Task<string> ReadAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -16,12 +16,12 @@ public sealed class DocxDocumentReader : ITextDocumentReader
             var sb = new StringBuilder();
 
             using var document = WordprocessingDocument.Open(path, false);
-            var body = document.MainDocumentPart?.Document.Body;
 
+            var body = document.MainDocumentPart?.Document?.Body;
             if (body is null)
                 return string.Empty;
 
-            foreach (var text in body.Descendants<DocumentFormat.OpenXml.Drawing.Text>())
+            foreach (var text in body.Descendants<Text>())
             {
                 if (!string.IsNullOrWhiteSpace(text.Text))
                     sb.Append(text.Text).Append(' ');

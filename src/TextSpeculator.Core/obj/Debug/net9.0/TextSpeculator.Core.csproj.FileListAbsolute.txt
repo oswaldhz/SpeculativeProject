@@ -1,0 +1,13 @@
+D:\SpeculativeProject\src\TextSpeculator.Core\bin\Debug\net9.0\TextSpeculator.Core.deps.json
+D:\SpeculativeProject\src\TextSpeculator.Core\bin\Debug\net9.0\TextSpeculator.Core.dll
+D:\SpeculativeProject\src\TextSpeculator.Core\bin\Debug\net9.0\TextSpeculator.Core.pdb
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.csproj.AssemblyReference.cache
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.AssemblyInfoInputs.cache
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.AssemblyInfo.cs
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.csproj.CoreCompileInputs.cache
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.sourcelink.json
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.dll
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\refint\TextSpeculator.Core.dll
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\TextSpeculator.Core.pdb
+D:\SpeculativeProject\src\TextSpeculator.Core\obj\Debug\net9.0\ref\TextSpeculator.Core.dll
