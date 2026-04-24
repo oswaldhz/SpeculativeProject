@@ -26,6 +26,7 @@ public sealed class SpeculationEngine
         if (userTokens.Count == 0)
             return Array.Empty<SpeculationSuggestion>();
 
+        // Must end with a letter (continue typing)
         var lastChar = text[^1];
         if (!char.IsLetter(lastChar))
             return Array.Empty<SpeculationSuggestion>();
@@ -34,48 +35,55 @@ public sealed class SpeculationEngine
         if (!TextTokenizer.IsWord(fragment))
             return Array.Empty<SpeculationSuggestion>();
 
-        var userCore = userTokens.Take(userTokens.Count - 1).ToList();
+        // Normalize user input for accent/case‑insensitive matching
+        var normalizedFragment = TextTokenizer.Normalize(fragment);
+        var userCoreTokens = userTokens.Take(userTokens.Count - 1).ToList();
+        var normalizedUserCore = userCoreTokens
+            .Where(TextTokenizer.IsWord)
+            .Select(TextTokenizer.Normalize)
+            .ToList();
+
         var bag = new ConcurrentBag<SpeculationSuggestion>();
 
         Parallel.ForEach(_segments, segment =>
         {
-            var segmentTokens = segment.Tokens;
-            if (segmentTokens.Count < userCore.Count + 1)
+            var normalizedSegmentTokens = segment.NormalizedTokens;
+            if (normalizedSegmentTokens.Count < normalizedUserCore.Count + 1)
                 return;
 
-            for (int pos = 0; pos <= segmentTokens.Count - userCore.Count - 1; pos++)
+            // Search for a match of the normalized user core tokens inside the segment's normalized tokens
+            for (int pos = 0; pos <= normalizedSegmentTokens.Count - normalizedUserCore.Count - 1; pos++)
             {
                 bool match = true;
-
-                for (int i = 0; i < userCore.Count; i++)
+                for (int i = 0; i < normalizedUserCore.Count; i++)
                 {
-                    if (!string.Equals(
-                            segmentTokens[pos + i],
-                            userCore[i],
-                            StringComparison.OrdinalIgnoreCase))
+                    if (normalizedSegmentTokens[pos + i] != normalizedUserCore[i])
                     {
                         match = false;
                         break;
                     }
                 }
 
-                if (!match)
-                    continue;
+                if (!match) continue;
 
-                var nextToken = segmentTokens[pos + userCore.Count];
+                // Candidate continuation: next token after the matched core
+                var nextToken = segment.Tokens[pos + normalizedUserCore.Count];
                 if (!TextTokenizer.IsWord(nextToken))
                     continue;
 
-                if (!nextToken.StartsWith(fragment, StringComparison.OrdinalIgnoreCase))
+                // Compare diacritic‑free versions
+                var nextTokenNormalized = TextTokenizer.Normalize(nextToken);
+                if (!nextTokenNormalized.StartsWith(normalizedFragment, StringComparison.Ordinal))
                     continue;
 
-                var snippet = BuildShortSnippet(segmentTokens, pos + userCore.Count, maxWords);
+                var snippet = BuildShortSnippet(segment.Tokens, pos + normalizedUserCore.Count, maxWords);
                 if (string.IsNullOrWhiteSpace(snippet))
                     continue;
 
                 var preview = text[..^fragment.Length] + snippet;
 
-                var score = userCore.Count * 10 + Math.Min(maxWords, snippet.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+                var score = normalizedUserCore.Count * 10 +
+                            Math.Min(maxWords, snippet.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
 
                 bag.Add(new SpeculationSuggestion(
                     Text: snippet,
@@ -84,7 +92,7 @@ public sealed class SpeculationEngine
                     Score: score
                 ));
 
-                break;
+                break; // Only take the first match in this segment
             }
         });
 
