@@ -20,7 +20,7 @@ public sealed class CorpusIndexer
 
                 var normalized = tokens
                     .Where(t => TextTokenizer.IsWord(t))
-                    .Select(TextTokenizer.Normalize)
+                    .Select(TextTokenizer.Normalize)   // now removes accents
                     .ToList();
 
                 if (normalized.Count == 0)
