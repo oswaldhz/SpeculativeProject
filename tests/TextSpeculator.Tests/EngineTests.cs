@@ -19,7 +19,7 @@ public class EngineTests
 
         var suggestions = engine.Suggest("El nin");
         Assert.NotEmpty(suggestions);
-        Assert.Equal("nino juega", suggestions[0].Text); // snippet returned with original casing? It uses raw tokens, so it would be "niño juega". Let's check: raw tokens are original case, so snippet will be "niño juega". The comparison is accent-insensitive.
-        // The snippet comes from raw tokens, so it's "niño juega" (preserving original case). That's fine.
+        // Lookup is accent-insensitive, but returned snippets preserve original corpus text from raw tokens.
+        Assert.Equal("niño juega", suggestions[0].Text);
     }
 }
