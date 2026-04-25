@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TextSpeculator.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+75128565d0255bc2f36e6faa28f8e5a12eee9442")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d517a02388ab9c075f34f0faeaa845f24f480902")]
 [assembly: System.Reflection.AssemblyProductAttribute("TextSpeculator.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TextSpeculator.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
