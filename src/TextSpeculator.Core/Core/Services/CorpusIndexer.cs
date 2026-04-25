@@ -1,6 +1,6 @@
+using System.Collections.Concurrent;
 using TextSpeculator.Core.Models;
 using TextSpeculator.Core.Processing;
-using System.Collections.Concurrent;
 
 namespace TextSpeculator.Core.Services;
 
@@ -19,8 +19,8 @@ public sealed class CorpusIndexer
                     continue;
 
                 var normalized = tokens
-                    .Where(t => TextTokenizer.IsWord(t))
-                    .Select(TextTokenizer.Normalize)   // now removes accents
+                    .Where(TextTokenizer.IsWord)
+                    .Select(TextTokenizer.Normalize)
                     .ToList();
 
                 if (normalized.Count == 0)
@@ -35,6 +35,9 @@ public sealed class CorpusIndexer
             }
         });
 
-        return bag.ToList();
+        return bag
+            .OrderBy(segment => segment.DocumentName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(segment => segment.OriginalText, StringComparer.Ordinal)
+            .ToList();
     }
 }

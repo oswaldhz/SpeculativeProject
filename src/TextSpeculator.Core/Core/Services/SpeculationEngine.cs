@@ -7,6 +7,8 @@ namespace TextSpeculator.Core.Services;
 
 public sealed class SpeculationEngine
 {
+    private const int MaxContextWords = 6;
+
     private readonly IReadOnlyList<IndexedSegment> _segments;
 
     public SpeculationEngine(IReadOnlyList<IndexedSegment> segments)
@@ -16,7 +18,7 @@ public sealed class SpeculationEngine
 
     public IReadOnlyList<SpeculationSuggestion> Suggest(string userText, int topK = 3, int maxWords = 4)
     {
-        if (string.IsNullOrWhiteSpace(userText) || _segments.Count == 0)
+        if (string.IsNullOrWhiteSpace(userText) || _segments.Count == 0 || topK <= 0 || maxWords <= 0)
             return Array.Empty<SpeculationSuggestion>();
 
         var text = userText.TrimEnd('\r', '\n');
@@ -27,64 +29,39 @@ public sealed class SpeculationEngine
         if (userTokens.Count == 0)
             return Array.Empty<SpeculationSuggestion>();
 
-        // Must end with a letter (continue typing)
-        var lastChar = text[^1];
-        if (!char.IsLetter(lastChar))
+        var input = BuildSuggestionInput(text, userTokens);
+        if (input is null)
             return Array.Empty<SpeculationSuggestion>();
-
-        var fragment = userTokens.Last();
-        if (!TextTokenizer.IsWord(fragment))
-            return Array.Empty<SpeculationSuggestion>();
-
-        // Normalize user input for accent/case‑insensitive matching
-        var normalizedFragment = TextTokenizer.Normalize(fragment);
-        var userCoreTokens = userTokens.Take(userTokens.Count - 1).ToList();
-        var normalizedUserCore = userCoreTokens
-            .Where(TextTokenizer.IsWord)
-            .Select(TextTokenizer.Normalize)
-            .ToList();
 
         var bag = new ConcurrentBag<SpeculationSuggestion>();
 
         Parallel.ForEach(_segments, segment =>
         {
+            var wordTokenPositions = GetWordTokenPositions(segment.Tokens);
             var normalizedSegmentTokens = segment.NormalizedTokens;
-            if (normalizedSegmentTokens.Count < normalizedUserCore.Count + 1)
+            if (normalizedSegmentTokens.Count != wordTokenPositions.Count)
                 return;
 
-            // Search for a match of the normalized user core tokens inside the segment's normalized tokens
-            for (int pos = 0; pos <= normalizedSegmentTokens.Count - normalizedUserCore.Count - 1; pos++)
+            if (normalizedSegmentTokens.Count < input.NormalizedCoreTokens.Count + 1)
+                return;
+
+            for (int pos = 0; pos <= normalizedSegmentTokens.Count - input.NormalizedCoreTokens.Count - 1; pos++)
             {
-                bool match = true;
-                for (int i = 0; i < normalizedUserCore.Count; i++)
-                {
-                    if (normalizedSegmentTokens[pos + i] != normalizedUserCore[i])
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-
-                if (!match) continue;
-
-                // Candidate continuation: next token after the matched core
-                var nextToken = segment.Tokens[pos + normalizedUserCore.Count];
-                if (!TextTokenizer.IsWord(nextToken))
+                if (!MatchesAt(normalizedSegmentTokens, input.NormalizedCoreTokens, pos))
                     continue;
 
-                // Compare diacritic‑free versions
-                var nextTokenNormalized = TextTokenizer.Normalize(nextToken);
-                if (!nextTokenNormalized.StartsWith(normalizedFragment, StringComparison.Ordinal))
+                var nextWordIndex = pos + input.NormalizedCoreTokens.Count;
+                var nextTokenIndex = wordTokenPositions[nextWordIndex];
+                var nextTokenNormalized = normalizedSegmentTokens[nextWordIndex];
+                if (!nextTokenNormalized.StartsWith(input.NormalizedFragment, StringComparison.Ordinal))
                     continue;
 
-                var snippet = BuildShortSnippet(segment.Tokens, pos + normalizedUserCore.Count, maxWords);
+                var snippet = BuildShortSnippet(segment.Tokens, nextTokenIndex, maxWords);
                 if (string.IsNullOrWhiteSpace(snippet))
                     continue;
 
-                var preview = text[..^fragment.Length] + snippet;
-
-                var score = normalizedUserCore.Count * 10 +
-                            Math.Min(maxWords, snippet.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+                var preview = input.TextBeforeFragment + snippet;
+                var score = CalculateScore(input, nextTokenNormalized, snippet);
 
                 bag.Add(new SpeculationSuggestion(
                     Text: snippet,
@@ -93,14 +70,96 @@ public sealed class SpeculationEngine
                     Score: score
                 ));
 
-                break; // Only take the first match in this segment
+                break;
             }
         });
 
         return bag
-            .OrderByDescending(s => s.Score)
+            .GroupBy(suggestion => suggestion.Text, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(suggestion => suggestion.Score)
+                .ThenBy(suggestion => suggestion.SourceDocument, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .OrderByDescending(suggestion => suggestion.Score)
+            .ThenBy(suggestion => suggestion.Text, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(suggestion => suggestion.SourceDocument, StringComparer.OrdinalIgnoreCase)
             .Take(topK)
             .ToList();
+    }
+
+    private static SuggestionInput? BuildSuggestionInput(string text, IReadOnlyList<string> userTokens)
+    {
+        var lastChar = text[^1];
+        if (char.IsLetterOrDigit(lastChar))
+        {
+            var fragment = userTokens.Last();
+            if (!TextTokenizer.IsWord(fragment))
+                return null;
+
+            var normalizedCoreTokens = userTokens
+                .Take(userTokens.Count - 1)
+                .Where(TextTokenizer.IsWord)
+                .Select(TextTokenizer.Normalize)
+                .TakeLast(MaxContextWords)
+                .ToList();
+
+            return new SuggestionInput(
+                normalizedCoreTokens,
+                TextTokenizer.Normalize(fragment),
+                text[..^fragment.Length]);
+        }
+
+        if (!char.IsWhiteSpace(lastChar))
+            return null;
+
+        var normalizedUserTokens = userTokens
+            .Where(TextTokenizer.IsWord)
+            .Select(TextTokenizer.Normalize)
+            .TakeLast(MaxContextWords)
+            .ToList();
+
+        return new SuggestionInput(
+            normalizedUserTokens,
+            string.Empty,
+            text);
+    }
+
+    private static bool MatchesAt(
+        IReadOnlyList<string> normalizedSegmentTokens,
+        IReadOnlyList<string> normalizedUserCoreTokens,
+        int startIndex)
+    {
+        for (int i = 0; i < normalizedUserCoreTokens.Count; i++)
+        {
+            if (normalizedSegmentTokens[startIndex + i] != normalizedUserCoreTokens[i])
+                return false;
+        }
+
+        return true;
+    }
+
+    private static List<int> GetWordTokenPositions(IReadOnlyList<string> tokens)
+    {
+        var positions = new List<int>(tokens.Count);
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            if (TextTokenizer.IsWord(tokens[i]))
+                positions.Add(i);
+        }
+
+        return positions;
+    }
+
+    private static int CalculateScore(SuggestionInput input, string nextTokenNormalized, string snippet)
+    {
+        var snippetWordCount = TextTokenizer.Tokenize(snippet).Count(TextTokenizer.IsWord);
+        var fragmentScore = string.IsNullOrEmpty(input.NormalizedFragment)
+            ? 0
+            : Math.Min(input.NormalizedFragment.Length, nextTokenNormalized.Length);
+
+        return (input.NormalizedCoreTokens.Count * 20) +
+               (fragmentScore * 5) +
+               snippetWordCount;
     }
 
     private static string BuildShortSnippet(IReadOnlyList<string> tokens, int startIndex, int maxWords)
@@ -111,16 +170,16 @@ public sealed class SpeculationEngine
         for (int i = startIndex; i < tokens.Count; i++)
         {
             var token = tokens[i];
+            if (IsSentenceEndingPunctuation(token))
+                break;
+
             result.Add(token);
 
-            if (TextTokenizer.IsWord(token))
-            {
-                wordCount++;
-                if (wordCount >= maxWords)
-                    break;
-            }
+            if (!TextTokenizer.IsWord(token))
+                continue;
 
-            if (token is "." or "!" or "?" or ";" or ":")
+            wordCount++;
+            if (wordCount >= maxWords)
                 break;
         }
 
@@ -142,6 +201,14 @@ public sealed class SpeculationEngine
         return snippetBuilder.ToString().Trim();
     }
 
+    private static bool IsSentenceEndingPunctuation(string token) =>
+        token is "." or "!" or "?" or ";" or ":";
+
     private static bool IsTokenizerPunctuation(string token) =>
         token is "." or "," or "!" or "?" or ";" or ":";
+
+    private sealed record SuggestionInput(
+        IReadOnlyList<string> NormalizedCoreTokens,
+        string NormalizedFragment,
+        string TextBeforeFragment);
 }
