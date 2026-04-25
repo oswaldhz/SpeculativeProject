@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using TextSpeculator.Core.Models;
 using TextSpeculator.Core.Processing;
 
@@ -123,6 +124,24 @@ public sealed class SpeculationEngine
                 break;
         }
 
-        return string.Join(" ", result).Trim();
+        var snippetBuilder = new StringBuilder();
+        foreach (var token in result)
+        {
+            if (IsTokenizerPunctuation(token))
+            {
+                snippetBuilder.Append(token);
+                continue;
+            }
+
+            if (snippetBuilder.Length > 0)
+                snippetBuilder.Append(' ');
+
+            snippetBuilder.Append(token);
+        }
+
+        return snippetBuilder.ToString().Trim();
     }
+
+    private static bool IsTokenizerPunctuation(string token) =>
+        token is "." or "," or "!" or "?" or ";" or ":";
 }
